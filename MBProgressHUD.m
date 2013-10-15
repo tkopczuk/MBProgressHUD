@@ -139,6 +139,22 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 + (MB_INSTANCETYPE)showHUDAddedTo:(UIView *)view animated:(BOOL)animated {
 	MBProgressHUD *hud = [[self alloc] initWithView:view];
 	[view addSubview:hud];
+
+	MB_IF_IOS7_OR_GREATER(
+        // Add motion effect to hud
+        UIInterpolatingMotionEffect *xAxis = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.x"
+                                                                                             type:UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis];
+        xAxis.minimumRelativeValue = @(- 8.0);
+        xAxis.maximumRelativeValue = @(  8.0);
+        UIInterpolatingMotionEffect *yAxis = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.y"
+                                                                                             type:UIInterpolatingMotionEffectTypeTiltAlongVerticalAxis];
+        yAxis.minimumRelativeValue = @(- 8.0);
+        yAxis.maximumRelativeValue = @(  8.0);
+        UIMotionEffectGroup *effectGroup = [[UIMotionEffectGroup alloc] init];
+        effectGroup.motionEffects = @[xAxis, yAxis];
+        [hud addMotionEffect:effectGroup];
+    )
+
 	[hud show:animated];
 	return MB_AUTORELEASE(hud);
 }
