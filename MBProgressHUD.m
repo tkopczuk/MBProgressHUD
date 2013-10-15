@@ -58,6 +58,8 @@ static const CGFloat kPadding = 4.f;
 static const CGFloat kLabelFontSize = 16.f;
 static const CGFloat kDetailsLabelFontSize = 12.f;
 
+static const CGFloat kMotionOffset = 8.f;
+
 
 @interface MBProgressHUD ()
 
@@ -117,6 +119,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 @synthesize square;
 @synthesize margin;
 @synthesize dimBackground;
+@synthesize backgroundBlurAmount;
 @synthesize graceTime;
 @synthesize minShowTime;
 @synthesize graceTimer;
@@ -144,12 +147,12 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
         // Add motion effect to hud
         UIInterpolatingMotionEffect *xAxis = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.x"
                                                                                              type:UIInterpolatingMotionEffectTypeTiltAlongHorizontalAxis];
-        xAxis.minimumRelativeValue = @(- 8.0);
-        xAxis.maximumRelativeValue = @(  8.0);
+        xAxis.minimumRelativeValue = @(- kMotionOffset);
+        xAxis.maximumRelativeValue = @(  kMotionOffset);
         UIInterpolatingMotionEffect *yAxis = [[UIInterpolatingMotionEffect alloc] initWithKeyPath:@"center.y"
                                                                                              type:UIInterpolatingMotionEffectTypeTiltAlongVerticalAxis];
-        yAxis.minimumRelativeValue = @(- 8.0);
-        yAxis.maximumRelativeValue = @(  8.0);
+        yAxis.minimumRelativeValue = @(- kMotionOffset);
+        yAxis.maximumRelativeValue = @(  kMotionOffset);
         UIMotionEffectGroup *effectGroup = [[UIMotionEffectGroup alloc] init];
         effectGroup.motionEffects = @[xAxis, yAxis];
         [hud addMotionEffect:effectGroup];
@@ -220,6 +223,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 		self.xOffset = 0.0f;
 		self.yOffset = 0.0f;
 		self.dimBackground = NO;
+        self.backgroundBlurAmount = 0.0f;
 		self.margin = 20.0f;
 		self.graceTime = 0.0f;
 		self.minShowTime = 0.0f;
@@ -560,7 +564,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	// Entirely cover the parent view
 	UIView *parent = self.superview;
 	if (parent) {
-		self.frame = parent.bounds;
+		self.frame = CGRectInset(parent.bounds, -kMotionOffset, -kMotionOffset);
 	}
 	CGRect bounds = self.bounds;
 	
@@ -680,6 +684,9 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 		CGContextSetGrayFillColor(context, gray, self.opacity);
     }
 	
+    // Apply background blur
+    [self drawBlurredBackground:self.backgroundBlurAmount inRect:self.bounds];
+    
 	// Center HUD
 	CGRect allRect = self.bounds;
 	// Draw rounded HUD backgroud rect
@@ -696,6 +703,56 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	CGContextFillPath(context);
 
 	UIGraphicsPopContext();
+}
+
+- (void)drawBlurredBackground:(CGFloat)blurRadius inRect:(CGRect)rect
+{
+    if (blurRadius == 0.0f || self.hidden) {
+        return;
+    }
+    
+    self.hidden = YES; // make the hud invisible as it should not be rendered!
+    
+    // walk up the view hierarchy to find the first view that is opaque
+    UIView* viewToRender = self.superview;
+    while (!viewToRender.opaque) {
+        if (viewToRender.superview) {
+            viewToRender = viewToRender.superview;
+        } else {
+            break; // maybe the window isn't set opaque!
+        }
+    }
+    
+    CGRect renderRect = [viewToRender convertRect:rect fromView:self];
+    
+    UIGraphicsBeginImageContext(rect.size);
+    
+    CGContextTranslateCTM(UIGraphicsGetCurrentContext(), -CGRectGetMinX(renderRect), CGRectGetMaxY(renderRect));
+    CGContextScaleCTM(UIGraphicsGetCurrentContext(), 1.0f, -1.0f);
+    
+    [viewToRender.layer renderInContext:UIGraphicsGetCurrentContext()];
+    
+    CGImageRef blurInputReference = [UIGraphicsGetImageFromCurrentImageContext() CGImage];
+    
+    UIGraphicsEndImageContext();
+    
+    self.hidden = NO; // make the hud visible again for display!
+    
+    // blur the rendered background
+    CIImage* inputImage = [CIImage imageWithCGImage:blurInputReference];
+    CIFilter* blur = [CIFilter filterWithName:@"CIGaussianBlur"];
+    [blur setDefaults];
+    [blur setValue:@(blurRadius) forKey:@"inputRadius"];
+    [blur setValue:inputImage forKey:@"inputImage"];
+    
+    CIImage* outputImage = [blur outputImage];
+    CIContext* context = [CIContext contextWithOptions:nil];
+    CGImageRef blurOutput = [context createCGImage:outputImage fromRect:outputImage.extent];
+    
+    // render the blured background - note we need to use the extent of the output image, as it is larger as the original rect!
+    CGContextDrawImage(UIGraphicsGetCurrentContext(), outputImage.extent, blurOutput);
+    
+    CGImageRelease(blurOutput);
 }
 
 #pragma mark - KVO
